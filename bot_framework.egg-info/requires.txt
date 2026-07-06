@@ -1,0 +1,6 @@
+
+[dev]
+pytest>=8.0
+
+[hardware]
+opencv-python>=4.8

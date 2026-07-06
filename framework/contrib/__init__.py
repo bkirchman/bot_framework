@@ -1,0 +1,1 @@
+"""Optional game-agnostic framework extensions."""
