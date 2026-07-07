@@ -1,0 +1,40 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "pytest hardware fallback test",
+			"type": "shell",
+			"command": "C:\\Users\\brian\\AppData\\Local\\Programs\\Python\\Python310\\python.exe",
+			"args": [
+				"-m",
+				"pytest",
+				"framework/tests/test_contrib_hardware.py",
+				"-q"
+			],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "test"
+		},
+		{
+			"label": "Run latency calibration index 1",
+			"type": "shell",
+			"command": "C:\\Users\\brian\\AppData\\Local\\Programs\\Python\\Python310\\python.exe",
+			"args": [
+				"scripts\\run_latency_calibration.py",
+				"--device-index",
+				"1",
+				"--backend",
+				"dshow",
+				"--width",
+				"1920",
+				"--height",
+				"1080",
+				"--fps",
+				"60"
+			],
+			"isBackground": false,
+			"problemMatcher": [],
+			"group": "test"
+		}
+	]
+}

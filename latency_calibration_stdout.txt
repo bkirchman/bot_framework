@@ -1,0 +1,23 @@
+Running stability pre-check...
+Stability pre-check passed.
+trial 01: payload=IMPULSE measured_latency_frames=7 warning=LATENCY CALIBRATION WARNING: measured latency_frames=7 does not match declared latency_frames=6.
+trial 02: payload=ALTERNATE measured_latency_frames=12 warning=LATENCY CALIBRATION WARNING: measured latency_frames=12 does not match declared latency_frames=6.
+trial 03: payload=IMPULSE measured_latency_frames=6 warning=None
+trial 04: payload=ALTERNATE measured_latency_frames=6 warning=None
+trial 05: payload=IMPULSE measured_latency_frames=6 warning=None
+trial 06: payload=ALTERNATE measured_latency_frames=6 warning=None
+trial 07: payload=IMPULSE measured_latency_frames=6 warning=None
+trial 08: payload=ALTERNATE measured_latency_frames=6 warning=None
+trial 09: payload=IMPULSE measured_latency_frames=6 warning=None
+trial 10: payload=ALTERNATE measured_latency_frames=6 warning=None
+trial 11: payload=IMPULSE measured_latency_frames=6 warning=None
+trial 12: payload=ALTERNATE measured_latency_frames=6 warning=None
+trial 13: payload=IMPULSE measured_latency_frames=7 warning=LATENCY CALIBRATION WARNING: measured latency_frames=7 does not match declared latency_frames=6.
+trial 14: payload=ALTERNATE measured_latency_frames=7 warning=LATENCY CALIBRATION WARNING: measured latency_frames=7 does not match declared latency_frames=6.
+trial 15: payload=IMPULSE measured_latency_frames=6 warning=None
+
+Measured latency_frames per trial: [7, 12, 6, 6, 6, 6, 6, 6, 6, 6, 6, 6, 7, 7, 6]
+Mode latency_frames: 6
+Mismatch warnings: 4
+Declared latency_frames: 6
+Result: FAIL

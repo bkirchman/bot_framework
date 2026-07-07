@@ -88,7 +88,7 @@ class LoopInterpreter:
         if isinstance(step, BranchStep):
             return self._tick_branch_step(execution_frame, step, frame, services)
         if isinstance(step, RepeatStep):
-            return self._tick_repeat_step(execution_frame, step, frame)
+            return self._tick_repeat_step(execution_frame, step, frame, services)
         if isinstance(step, CallStep):
             return self._tick_call_step(execution_frame, step)
 
@@ -159,8 +159,9 @@ class LoopInterpreter:
             return None
 
         condition = self._detector_registry.get(step.condition)
-        branch_steps = step.then_steps if condition(frame.frame) else step.else_steps
-        branch_label = "then" if condition(frame.frame) else "else"
+        condition_result = condition(frame.frame)
+        branch_steps = step.then_steps if condition_result else step.else_steps
+        branch_label = "then" if condition_result else "else"
         self._advance(execution_frame)
         self._push_steps(branch_steps, execution_frame.path_prefix + (str(execution_frame.position - 1), branch_label))
         return None
@@ -170,6 +171,7 @@ class LoopInterpreter:
         execution_frame: ExecutionFrame,
         step: RepeatStep,
         frame: StampedFrame,
+        services: Mapping[str, Any],
     ) -> None:
         state = execution_frame.step_state.setdefault(execution_frame.position, {})
 
@@ -181,6 +183,9 @@ class LoopInterpreter:
 
             state["remaining"] = remaining - 1
             self._push_steps(step.steps, execution_frame.path_prefix + (str(execution_frame.position), "repeat"))
+            return None
+
+        if self._is_latency_gated(frame, services):
             return None
 
         condition = self._detector_registry.get(step.while_condition or "")

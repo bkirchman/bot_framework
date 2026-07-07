@@ -1,0 +1,11 @@
+Windows video devices:
+name=Cam Link 4K class=Camera status=OK
+name=HD Pro Webcam C920 class=MEDIA status=OK
+name=HD Pro Webcam C920 class=Camera status=OK
+name=AVerMedia Live Gamer 4K class=MEDIA status=OK
+name=Remote Desktop Camera Bus class=System status=OK
+name=Microphone (HD Pro Webcam C920) class=AudioEndpoint status=OK
+OpenCV index probe:
+index=0 backend=msmf opened=yes read=yes width=640 height=480 fps=30.00
+index=1 backend=msmf opened=yes read=yes width=640 height=480 fps=30.00
+index=2 backend=dshow opened=yes read=yes width=640 height=480 fps=-1.00

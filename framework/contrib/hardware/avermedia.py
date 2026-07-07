@@ -9,12 +9,15 @@ from framework.interfaces import CaptureSource, StampedFrame
 class AVerMediaCapture(CaptureSource):
     def __init__(
         self,
-        device_index: int = 0,
+        device_index: int = 1,
         *,
         width: int = 1920,
         height: int = 1080,
         fps: float = 60.0,
-        latency_frames: int = 3,
+        latency_frames: int = 6,
+        backend: str = "dshow",
+        buffer_size: int = 1,
+        open_settle_seconds: float = 0.2,
         freshness_threshold: int = 1000,
         max_read_attempts: int = 8,
     ) -> None:
@@ -22,6 +25,10 @@ class AVerMediaCapture(CaptureSource):
             raise ValueError("latency_frames must be non-negative")
         if fps <= 0:
             raise ValueError("fps must be positive")
+        if buffer_size < 0:
+            raise ValueError("buffer_size must be non-negative")
+        if open_settle_seconds < 0:
+            raise ValueError("open_settle_seconds must be non-negative")
         if freshness_threshold <= 0:
             raise ValueError("freshness_threshold must be positive")
         if max_read_attempts <= 0:
@@ -33,8 +40,15 @@ class AVerMediaCapture(CaptureSource):
         self._height = height
         self._fps = fps
         self._latency_frames = latency_frames
+        self._backend_name = backend
+        self._active_backend_name = backend
+        self._buffer_size = buffer_size
+        self._open_settle_seconds = open_settle_seconds
+        # Keep accepting these legacy parameters for compatibility with earlier
+        # adapter versions. Freshness is now determined by the blocking backend
+        # read rather than pixel-diff retries in the hot path.
         self._freshness_threshold = freshness_threshold
-        self._max_read_attempts = max_read_attempts
+        self._flush_grabs = max_read_attempts
         self._capture = self._open_capture()
         self._frame_id = 0
         self._last_raw_frame: Optional[Any] = None
@@ -48,54 +62,50 @@ class AVerMediaCapture(CaptureSource):
         return self._fps
 
     def get_frame(self) -> StampedFrame:
-        raw_frame = self._read_fresh_frame()
+        raw_frame = self._read_raw_frame(store_as_last=True)
         stamped_frame = StampedFrame(
             frame_id=self._frame_id,
             timestamp=time.monotonic(),
             frame=raw_frame,
         )
         self._frame_id += 1
-        self._last_raw_frame = raw_frame.copy()
         return stamped_frame
 
     def flush(self) -> None:
-        if self._last_raw_frame is None:
-            self._read_raw_frame(store_as_last=True)
-            return
-
-        for _ in range(self._max_read_attempts):
-            candidate = self._read_raw_frame(store_as_last=False)
-            if self._count_changed_pixels(self._last_raw_frame, candidate) >= self._freshness_threshold:
-                self._last_raw_frame = candidate.copy()
-                return
-
-        self._last_raw_frame = candidate.copy()
+        # Drain any queued driver frames cheaply. A blocking read in get_frame()
+        # is the freshness gate; flush only needs to discard buffered frames.
+        for _ in range(self._flush_grabs):
+            if not self._capture.grab():
+                break
+        self._last_raw_frame = None
 
     def close(self) -> None:
         self._capture.release()
 
     def _open_capture(self) -> Any:
-        capture = self._cv2.VideoCapture(self._device_index, self._cv2.CAP_DSHOW)
-        if not capture.isOpened():
-            raise RuntimeError(f"Could not open capture device {self._device_index}")
+        attempted_backends: list[str] = []
+        for backend_name in self._candidate_backends(self._backend_name):
+            attempted_backends.append(backend_name)
+            capture_backend = self._resolve_backend(backend_name)
+            capture = self._cv2.VideoCapture(self._device_index, capture_backend)
+            if not capture.isOpened():
+                capture.release()
+                continue
 
-        capture.set(self._cv2.CAP_PROP_FRAME_WIDTH, self._width)
-        capture.set(self._cv2.CAP_PROP_FRAME_HEIGHT, self._height)
-        capture.set(self._cv2.CAP_PROP_FPS, self._fps)
-        capture.set(self._cv2.CAP_PROP_FOURCC, self._cv2.VideoWriter_fourcc(*"MJPG"))
-        return capture
+            capture.set(self._cv2.CAP_PROP_FRAME_WIDTH, self._width)
+            capture.set(self._cv2.CAP_PROP_FRAME_HEIGHT, self._height)
+            capture.set(self._cv2.CAP_PROP_FPS, self._fps)
+            capture.set(self._cv2.CAP_PROP_FOURCC, self._cv2.VideoWriter_fourcc(*"MJPG"))
+            capture.set(self._cv2.CAP_PROP_BUFFERSIZE, self._buffer_size)
+            if self._open_settle_seconds > 0:
+                time.sleep(self._open_settle_seconds)
+            self._active_backend_name = backend_name
+            return capture
 
-    def _read_fresh_frame(self) -> Any:
-        candidate = self._read_raw_frame(store_as_last=False)
-        if self._last_raw_frame is None:
-            return candidate
-
-        for _ in range(self._max_read_attempts - 1):
-            if self._count_changed_pixels(self._last_raw_frame, candidate) >= self._freshness_threshold:
-                return candidate
-            candidate = self._read_raw_frame(store_as_last=False)
-
-        return candidate
+        attempted = ", ".join(attempted_backends)
+        raise RuntimeError(
+            f"Could not open capture device {self._device_index} using backends: {attempted}"
+        )
 
     def _read_raw_frame(self, *, store_as_last: bool) -> Any:
         ok, frame = self._capture.read()
@@ -106,12 +116,28 @@ class AVerMediaCapture(CaptureSource):
             self._last_raw_frame = frame.copy()
         return frame
 
-    def _count_changed_pixels(self, previous_frame: Any, current_frame: Any) -> int:
-        previous_gray = self._cv2.cvtColor(previous_frame, self._cv2.COLOR_BGR2GRAY)
-        current_gray = self._cv2.cvtColor(current_frame, self._cv2.COLOR_BGR2GRAY)
-        delta = self._cv2.absdiff(previous_gray, current_gray)
-        _, thresholded = self._cv2.threshold(delta, 10, 255, self._cv2.THRESH_BINARY)
-        return int(self._cv2.countNonZero(thresholded))
+    def _resolve_backend(self, backend: str) -> int:
+        backend_map = {
+            "any": self._cv2.CAP_ANY,
+            "auto": self._cv2.CAP_ANY,
+            "dshow": self._cv2.CAP_DSHOW,
+            "directshow": self._cv2.CAP_DSHOW,
+            "msmf": self._cv2.CAP_MSMF,
+            "mediafoundation": self._cv2.CAP_MSMF,
+        }
+        try:
+            return backend_map[backend.lower()]
+        except KeyError as exc:
+            raise ValueError(f"Unsupported capture backend: {backend}") from exc
+
+    def _candidate_backends(self, backend: str) -> list[str]:
+        normalized = backend.lower()
+        candidates = [normalized]
+        if normalized == "msmf":
+            candidates.extend(["dshow", "any"])
+        elif normalized in {"auto", "any"}:
+            candidates.append("dshow")
+        return candidates
 
     @staticmethod
     def _import_cv2() -> Any:

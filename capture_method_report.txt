@@ -1,0 +1,31 @@
+Testing device_index=2
+
+[msmf]
+  bare_open: opened=False read=False size=n/axn/a fps=n/a buffer=n/a
+    error=failed to open
+  default_warmup: opened=False read=False size=n/axn/a fps=n/a buffer=n/a
+    error=failed to open
+  vga30: opened=False read=False size=n/axn/a fps=n/a buffer=n/a
+    error=failed to open
+  vga30_mjpg: opened=False read=False size=n/axn/a fps=n/a buffer=n/a
+    error=failed to open
+  hd60: opened=False read=False size=n/axn/a fps=n/a buffer=n/a
+    error=failed to open
+  hd60_mjpg: opened=False read=False size=n/axn/a fps=n/a buffer=n/a
+    error=failed to open
+
+[dshow]
+  bare_open: opened=True read=True size=640x480 fps=-1.00 buffer=-1.00
+  default_warmup: opened=True read=True size=640x480 fps=-1.00 buffer=-1.00
+  vga30: opened=True read=True size=640x480 fps=30.00 buffer=-1.00
+  vga30_mjpg: opened=True read=True size=640x480 fps=30.00 buffer=-1.00
+  hd60: opened=True read=True size=1920x1080 fps=60.00 buffer=-1.00
+  hd60_mjpg: opened=True read=True size=1920x1080 fps=60.00 buffer=-1.00
+
+[any]
+  bare_open: opened=True read=True size=640x480 fps=-1.00 buffer=-1.00
+  default_warmup: opened=True read=True size=640x480 fps=-1.00 buffer=-1.00
+  vga30: opened=True read=True size=640x480 fps=30.00 buffer=-1.00
+  vga30_mjpg: opened=True read=True size=640x480 fps=30.00 buffer=-1.00
+  hd60: opened=True read=True size=1920x1080 fps=60.00 buffer=-1.00
+  hd60_mjpg: opened=True read=True size=1920x1080 fps=60.00 buffer=-1.00

@@ -23,9 +23,17 @@ class NoOpProcessor(FrameProcessor):
 
 def main() -> int:
     args = parse_args()
-    capture = AVerMediaCapture(device_index=args.device_index)
+    print(f"Starting smoke test: device_index={args.device_index} duration_seconds={args.duration_seconds}")
+    capture = AVerMediaCapture(
+        device_index=args.device_index,
+        backend=args.backend,
+        width=args.width,
+        height=args.height,
+        fps=args.fps,
+    )
     output = UDPXboxOutput(udp_ip=args.udp_ip, udp_port=args.udp_port, response_mode=0)
     max_iterations = max(1, math.ceil(args.duration_seconds * capture.fps))
+    print(f"Configured capture: fps={capture.fps} latency_frames={capture.latency_frames} max_iterations={max_iterations}")
     history = FrameHistory(capacity=max_iterations + capture.latency_frames + 8)
     loop = BotLoop(
         capture=capture,
@@ -36,7 +44,9 @@ def main() -> int:
 
     wall_start = time.monotonic()
     try:
+        print("Entering loop...")
         iterations = loop.run(max_iterations=max_iterations)
+        print("Loop completed.")
     finally:
         with suppress(Exception):
             capture.close()
@@ -69,7 +79,11 @@ def main() -> int:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run a 10-second hardware smoke test for bot_framework.")
     parser.add_argument("--duration-seconds", type=float, default=10.0)
-    parser.add_argument("--device-index", type=int, default=0)
+    parser.add_argument("--device-index", type=int, default=1)
+    parser.add_argument("--backend", default="dshow")
+    parser.add_argument("--width", type=int, default=1920)
+    parser.add_argument("--height", type=int, default=1080)
+    parser.add_argument("--fps", type=float, default=60.0)
     parser.add_argument("--udp-ip", default="192.168.1.196")
     parser.add_argument("--udp-port", type=int, default=5005)
     return parser.parse_args()

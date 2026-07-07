@@ -226,6 +226,28 @@ def test_branch_step_selects_then_and_else_paths() -> None:
     assert else_action == Action(frame_id=1, timestamp=1.0 / 60.0, payload={"command": "second"})
 
 
+def test_branch_detector_is_called_once_per_tick() -> None:
+    detector_calls: list[int] = []
+
+    def detector(frame: dict[str, Any]) -> bool:
+        detector_calls.append(frame["frame_id"])
+        return True
+
+    interpreter = LoopInterpreter(
+        loop_definitions=_loop(
+            "root",
+            [BranchStep(condition="branch", then_steps=[CommandStep("first")], else_steps=[CommandStep("second")])],
+        ),
+        command_registry=_command_registry(),
+        detector_registry=_detector_registry(branch=detector),
+        loop_name="root",
+    )
+    services = {"capture": FakeCapture(frames=[0], latency_frames=0)}
+
+    assert interpreter.tick(capture_frame(0), services) is None
+    assert detector_calls == [0]
+
+
 def test_repeat_step_runs_fixed_count() -> None:
     interpreter = LoopInterpreter(
         loop_definitions=_loop("root", [RepeatStep(count=3, steps=[CommandStep("collect")])]),
@@ -301,6 +323,43 @@ def test_latency_gate_blocks_visual_checks_until_capture_latency_elapses() -> No
     assert second_action == Action(frame_id=3, timestamp=3.0 / 60.0, payload={"command": "collect"})
 
 
+def test_repeat_while_condition_is_not_evaluated_during_latency_gate() -> None:
+    detector_calls: list[int] = []
+
+    def while_detector(frame: dict[str, Any]) -> bool:
+        detector_calls.append(frame["frame_id"])
+        return frame["frame_id"] < 4
+
+    interpreter = LoopInterpreter(
+        loop_definitions=_loop(
+            "root",
+            [
+                RepeatStep(
+                    while_condition="repeat_ready",
+                    steps=[CommandStep("first")],
+                ),
+                CommandStep("collect"),
+            ],
+        ),
+        command_registry=_command_registry(),
+        detector_registry=_detector_registry(repeat_ready=while_detector),
+        loop_name="root",
+    )
+    services = {"capture": FakeCapture(frames=[0], latency_frames=2)}
+
+    assert interpreter.tick(capture_frame(0), services) is None
+    assert detector_calls == [0]
+
+    first_action = interpreter.tick(capture_frame(1), services)
+    assert first_action == Action(frame_id=1, timestamp=1.0 / 60.0, payload={"command": "first"})
+
+    assert interpreter.tick(capture_frame(2), services) is None
+    assert detector_calls == [0]
+
+    assert interpreter.tick(capture_frame(3), services) is None
+    assert detector_calls == [0, 3]
+
+
 def test_yaml_loader_parses_nested_loop_definitions() -> None:
     loaded = load_loops_from_text(
         """
@@ -368,6 +427,32 @@ loops:
       - call: missing
 """
         )
+
+        with pytest.raises(LoopValidationError, match="requires exactly one of count or while"):
+                load_loops_from_text(
+                        """
+loops:
+    root:
+        steps:
+            - repeat:
+                    steps:
+                        - command: first
+"""
+                )
+
+        with pytest.raises(LoopValidationError, match="cannot define both count and while"):
+                load_loops_from_text(
+                        """
+loops:
+    root:
+        steps:
+            - repeat:
+                    count: 2
+                    while: repeat_ready
+                    steps:
+                        - command: first
+"""
+                )
 
 
 def capture_frame(frame_id: int, **payload: Any) -> StampedFrame:

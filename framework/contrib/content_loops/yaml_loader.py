@@ -164,6 +164,10 @@ def _parse_repeat_step(value: Any, context: str) -> RepeatStep:
         raise LoopValidationError(f"{context}.repeat.count must be an integer")
     if while_condition is not None and (not isinstance(while_condition, str) or not while_condition):
         raise LoopValidationError(f"{context}.repeat.while must be a non-empty string")
+    if count is None and while_condition is None:
+        raise LoopValidationError(f"{context}.repeat requires exactly one of count or while")
+    if count is not None and while_condition is not None:
+        raise LoopValidationError(f"{context}.repeat cannot define both count and while")
 
     return RepeatStep(
         steps=_parse_steps(raw_steps, f"{context}.repeat.steps"),
