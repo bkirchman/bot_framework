@@ -7,7 +7,9 @@ name = "bot_framework"
 version = "0.1.0"
 description = "Game-agnostic bot framework core"
 requires-python = ">=3.10"
-dependencies = []
+dependencies = [
+    "PyYAML>=6.0",
+]
 
 [project.optional-dependencies]
 hardware = [
