@@ -7,6 +7,7 @@ import pytest
 from framework.contrib.content_loops.interpreter import LoopInterpreter
 from framework.contrib.content_loops.processor import ContentLoopProcessor
 from framework.contrib.content_loops.registries import CommandRegistry, DetectorRegistry
+from framework.contrib.content_loops.runtime import build_processor_from_yaml
 from framework.contrib.content_loops.schema import (
     BranchStep,
     CallStep,
@@ -428,31 +429,69 @@ loops:
 """
         )
 
-        with pytest.raises(LoopValidationError, match="requires exactly one of count or while"):
-                load_loops_from_text(
-                        """
+    with pytest.raises(LoopValidationError, match="requires exactly one of count or while"):
+        load_loops_from_text(
+            """
 loops:
-    root:
-        steps:
-            - repeat:
-                    steps:
-                        - command: first
+  root:
+    steps:
+      - repeat:
+          steps:
+            - command: first
 """
-                )
+        )
 
-        with pytest.raises(LoopValidationError, match="cannot define both count and while"):
-                load_loops_from_text(
-                        """
+    with pytest.raises(LoopValidationError, match="cannot define both count and while"):
+        load_loops_from_text(
+            """
 loops:
-    root:
-        steps:
-            - repeat:
-                    count: 2
-                    while: repeat_ready
-                    steps:
-                        - command: first
+  root:
+    steps:
+      - repeat:
+          count: 2
+          while: repeat_ready
+          steps:
+            - command: first
 """
-                )
+        )
+
+
+def test_runtime_builds_processor_from_yaml(tmp_path) -> None:
+    yaml_path = tmp_path / "loops.yaml"
+    yaml_path.write_text(
+        """
+loops:
+  root:
+    steps:
+      - command: first
+""",
+        encoding="utf-8",
+    )
+
+    processor, loop_definitions = build_processor_from_yaml(
+        yaml_path,
+        loop_name="root",
+        command_registry=_command_registry(),
+        detector_registry=_detector_registry(),
+    )
+
+    capture = FakeCapture(frames=[{"frame": 0}], latency_frames=0)
+    output = FakeOutput()
+    history = FrameHistory(capacity=4)
+
+    iterations = BotLoop(
+        capture=capture,
+        output=output,
+        processor=processor,
+        history=history,
+        clock=lambda: 0.0,
+        sleeper=lambda _: None,
+    ).run(max_iterations=1)
+
+    assert iterations == 1
+    assert "root" in loop_definitions
+    assert len(output.executed_actions) == 1
+    assert output.executed_actions[0].payload == {"command": "first"}
 
 
 def capture_frame(frame_id: int, **payload: Any) -> StampedFrame:
