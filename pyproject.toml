@@ -15,6 +15,9 @@ dependencies = [
 hardware = [
     "opencv-python>=4.8",
 ]
+ml = [
+    "ultralytics>=8.3",
+]
 dev = [
     "pytest>=8.0",
 ]
