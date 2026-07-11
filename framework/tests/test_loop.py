@@ -37,6 +37,19 @@ class EvenFrameProcessor(FrameProcessor):
         )
 
 
+class CapturingProcessor(FrameProcessor):
+    def __init__(self) -> None:
+        self.last_services: Mapping[str, Any] | None = None
+
+    def process(
+        self,
+        frame: StampedFrame,
+        services: Mapping[str, Any],
+    ) -> Optional[Action]:
+        self.last_services = dict(services)
+        return None
+
+
 def test_loop_records_monotonic_stamps_and_all_pairs() -> None:
     capture = FakeCapture(
         frames=["f0", "f1", "f2", "f3"],
@@ -106,3 +119,32 @@ def test_history_pairs_actions_with_delayed_frames_using_capture_latency() -> No
     assert [frame.frame_id if frame is not None else None for frame in observed_frames] == [3, 4, 5]
     assert [frame.frame if frame is not None else None for frame in observed_frames] == ["f3", "f4", "f5"]
     assert history.get_delayed_frame_for_action(output.executed_actions[3], capture.latency_frames) is None
+
+
+def test_loop_passes_core_services_to_processor() -> None:
+    capture = FakeCapture(
+        frames=["f0"],
+        fps=60.0,
+        latency_frames=2,
+    )
+    output = FakeOutput()
+    history = FrameHistory(capacity=4)
+    processor = CapturingProcessor()
+    loop = BotLoop(
+        capture=capture,
+        output=output,
+        processor=processor,
+        history=history,
+        services={"custom": "value"},
+        clock=lambda: 0.0,
+        sleeper=lambda _: None,
+    )
+
+    loop.run(max_iterations=1)
+
+    assert processor.last_services is not None
+    assert processor.last_services["capture"] is capture
+    assert processor.last_services["output"] is output
+    assert processor.last_services["history"] is history
+    assert processor.last_services["loop"] is loop
+    assert processor.last_services["custom"] == "value"
