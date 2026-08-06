@@ -12,6 +12,17 @@ from framework.contrib.hardware import ReplayCapture, UDPXboxOutput
 from framework.interfaces import Action
 
 
+class _FakeFrame:
+    def __init__(self, mean_value: float) -> None:
+        self._mean_value = mean_value
+
+    def mean(self) -> float:
+        return self._mean_value
+
+    def copy(self) -> "_FakeFrame":
+        return _FakeFrame(self._mean_value)
+
+
 def test_replay_capture_emits_stamped_frames_at_configured_rate(tmp_path: Path) -> None:
     (tmp_path / "000.txt").write_text("frame-0", encoding="utf-8")
     (tmp_path / "001.txt").write_text("frame-1", encoding="utf-8")
@@ -99,7 +110,7 @@ def test_avermedia_capture_uses_configured_backend_and_buffer(monkeypatch: pytes
             return True
 
         def read(self) -> tuple[bool, object]:
-            return True, SimpleNamespace(copy=lambda: SimpleNamespace(copy=lambda: None))
+            return True, _FakeFrame(255.0)
 
         def release(self) -> None:
             return None
@@ -142,7 +153,7 @@ def test_avermedia_capture_falls_back_from_msmf_to_dshow(monkeypatch: pytest.Mon
             return True
 
         def read(self) -> tuple[bool, object]:
-            return True, SimpleNamespace(copy=lambda: SimpleNamespace(copy=lambda: None))
+            return True, _FakeFrame(255.0)
 
         def grab(self) -> bool:
             return True
@@ -182,3 +193,100 @@ def test_avermedia_capture_rejects_unknown_backend(monkeypatch: pytest.MonkeyPat
 
     with pytest.raises(ValueError, match="Unsupported capture backend: bogus"):
         instance._resolve_backend("bogus")
+
+
+def test_avermedia_capture_warmup_records_success(monkeypatch: pytest.MonkeyPatch) -> None:
+    class FakeCapture:
+        def __init__(self, device_index: int, backend: int) -> None:
+            self._reads = 0
+
+        def isOpened(self) -> bool:
+            return True
+
+        def set(self, prop: int, value: float) -> bool:
+            return True
+
+        def read(self) -> tuple[bool, object]:
+            self._reads += 1
+            if self._reads < 3:
+                return True, _FakeFrame(0.0)
+            return True, _FakeFrame(10.0)
+
+        def release(self) -> None:
+            return None
+
+    fake_cv2 = SimpleNamespace(
+        CAP_ANY=0,
+        CAP_DSHOW=700,
+        CAP_MSMF=1400,
+        CAP_PROP_FRAME_WIDTH=3,
+        CAP_PROP_FRAME_HEIGHT=4,
+        CAP_PROP_FPS=5,
+        CAP_PROP_FOURCC=6,
+        CAP_PROP_BUFFERSIZE=38,
+        VideoCapture=FakeCapture,
+        VideoWriter_fourcc=lambda *args: 1196444237,
+    )
+
+    perf_values = iter([100.0, 100.01, 100.02, 100.03])
+    monkeypatch.setattr(AVerMediaCapture, "_import_cv2", staticmethod(lambda: fake_cv2))
+    monkeypatch.setattr("framework.contrib.hardware.avermedia.time.perf_counter", lambda: next(perf_values))
+
+    capture = AVerMediaCapture(device_index=1, backend="dshow", open_settle_seconds=0.0)
+    try:
+        assert capture.warmup_completed is True
+        assert capture.warmup_frames_discarded == 3
+        assert capture.warmup_elapsed_ms == pytest.approx(30.0)
+    finally:
+        capture.close()
+
+
+def test_avermedia_capture_warmup_timeout_warns_and_continues(monkeypatch: pytest.MonkeyPatch) -> None:
+    class FakeCapture:
+        def __init__(self, device_index: int, backend: int) -> None:
+            self.read_count = 0
+
+        def isOpened(self) -> bool:
+            return True
+
+        def set(self, prop: int, value: float) -> bool:
+            return True
+
+        def read(self) -> tuple[bool, object]:
+            self.read_count += 1
+            return True, _FakeFrame(0.0)
+
+        def release(self) -> None:
+            return None
+
+    fake_cv2 = SimpleNamespace(
+        CAP_ANY=0,
+        CAP_DSHOW=700,
+        CAP_MSMF=1400,
+        CAP_PROP_FRAME_WIDTH=3,
+        CAP_PROP_FRAME_HEIGHT=4,
+        CAP_PROP_FPS=5,
+        CAP_PROP_FOURCC=6,
+        CAP_PROP_BUFFERSIZE=38,
+        VideoCapture=FakeCapture,
+        VideoWriter_fourcc=lambda *args: 1196444237,
+    )
+
+    perf_values = iter([50.0, 50.001])
+    monkeypatch.setattr(AVerMediaCapture, "_import_cv2", staticmethod(lambda: fake_cv2))
+    monkeypatch.setattr("framework.contrib.hardware.avermedia.time.perf_counter", lambda: next(perf_values))
+
+    with pytest.warns(RuntimeWarning, match="capture may be starting on a black screen"):
+        capture = AVerMediaCapture(
+            device_index=1,
+            backend="dshow",
+            open_settle_seconds=0.0,
+            warmup_timeout_ms=0,
+        )
+
+    try:
+        assert capture.warmup_completed is False
+        assert capture.warmup_frames_discarded == 1
+        assert capture.warmup_elapsed_ms == pytest.approx(1.0)
+    finally:
+        capture.close()
