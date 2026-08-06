@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 import time
+import warnings
 from typing import Any, Optional
 
 from framework.interfaces import CaptureSource, StampedFrame
+
+
+WARMUP_MEAN_THRESHOLD = 1.0
 
 
 class AVerMediaCapture(CaptureSource):
@@ -20,6 +24,7 @@ class AVerMediaCapture(CaptureSource):
         open_settle_seconds: float = 0.2,
         freshness_threshold: int = 1000,
         max_read_attempts: int = 8,
+        warmup_timeout_ms: int = 3000,
     ) -> None:
         if latency_frames < 0:
             raise ValueError("latency_frames must be non-negative")
@@ -33,6 +38,8 @@ class AVerMediaCapture(CaptureSource):
             raise ValueError("freshness_threshold must be positive")
         if max_read_attempts <= 0:
             raise ValueError("max_read_attempts must be positive")
+        if warmup_timeout_ms < 0:
+            raise ValueError("warmup_timeout_ms must be non-negative")
 
         self._cv2 = self._import_cv2()
         self._device_index = device_index
@@ -49,7 +56,12 @@ class AVerMediaCapture(CaptureSource):
         # read rather than pixel-diff retries in the hot path.
         self._freshness_threshold = freshness_threshold
         self._flush_grabs = max_read_attempts
+        self._warmup_timeout_ms = warmup_timeout_ms
+        self._warmup_completed = False
+        self._warmup_frames_discarded = 0
+        self._warmup_elapsed_ms = 0.0
         self._capture = self._open_capture()
+        self._warmup_after_open()
         self._frame_id = 0
         self._last_raw_frame: Optional[Any] = None
 
@@ -60,6 +72,18 @@ class AVerMediaCapture(CaptureSource):
     @property
     def fps(self) -> float:
         return self._fps
+
+    @property
+    def warmup_completed(self) -> bool:
+        return self._warmup_completed
+
+    @property
+    def warmup_frames_discarded(self) -> int:
+        return self._warmup_frames_discarded
+
+    @property
+    def warmup_elapsed_ms(self) -> float:
+        return self._warmup_elapsed_ms
 
     def get_frame(self) -> StampedFrame:
         raw_frame = self._read_raw_frame(store_as_last=True)
@@ -106,6 +130,38 @@ class AVerMediaCapture(CaptureSource):
         raise RuntimeError(
             f"Could not open capture device {self._device_index} using backends: {attempted}"
         )
+
+    def _warmup_after_open(self) -> None:
+        start = time.perf_counter()
+        discarded = 0
+        timeout_s = self._warmup_timeout_ms / 1000.0
+
+        while True:
+            raw_frame = self._read_raw_frame(store_as_last=False)
+            discarded += 1
+            elapsed_s = time.perf_counter() - start
+            mean_value = float(raw_frame.mean())
+            if mean_value > WARMUP_MEAN_THRESHOLD:
+                self._warmup_completed = True
+                self._warmup_frames_discarded = discarded
+                self._warmup_elapsed_ms = elapsed_s * 1000.0
+                return
+
+            if elapsed_s >= timeout_s:
+                self._warmup_completed = False
+                self._warmup_frames_discarded = discarded
+                self._warmup_elapsed_ms = elapsed_s * 1000.0
+                warnings.warn(
+                    (
+                        "AVerMediaCapture warm-up timeout after "
+                        f"{self._warmup_elapsed_ms:.1f} ms and "
+                        f"{self._warmup_frames_discarded} discarded frames; "
+                        "capture may be starting on a black screen"
+                    ),
+                    RuntimeWarning,
+                    stacklevel=2,
+                )
+                return
 
     def _read_raw_frame(self, *, store_as_last: bool) -> Any:
         ok, frame = self._capture.read()
