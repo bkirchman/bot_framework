@@ -18,6 +18,7 @@ class RoiMotionDetector:
     _pending_state: bool | None = field(default=None, init=False, repr=False)
     _pending_count: int = field(default=0, init=False, repr=False)
     _raw_motion: bool = field(default=False, init=False, repr=False)
+    _last_changed_fraction: float = field(default=0.0, init=False, repr=False)
 
     def __post_init__(self) -> None:
         x, y, w, h = self.roi
@@ -34,17 +35,23 @@ class RoiMotionDetector:
     def raw_motion(self) -> bool:
         return self._raw_motion
 
+    @property
+    def last_changed_fraction(self) -> float:
+        return self._last_changed_fraction
+
     def update(self, frame: StampedFrame) -> bool:
         crop = self._extract_roi(frame)
 
         if self._prev_crop is None:
             self._prev_crop = crop
             self._raw_motion = False
+            self._last_changed_fraction = 0.0
             return self._state
 
         diff = np.abs(crop.astype(np.int16) - self._prev_crop.astype(np.int16))
         changed = diff > self.diff_threshold
-        self._raw_motion = (float(changed.mean()) > self.changed_fraction)
+        self._last_changed_fraction = float(changed.mean())
+        self._raw_motion = (self._last_changed_fraction > self.changed_fraction)
 
         self._prev_crop = crop
         self._apply_hysteresis(self._raw_motion)
