@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any, Mapping, Optional
+from typing import Any, Mapping, Optional, Protocol
 
 
 @dataclass(frozen=True, slots=True)
@@ -53,3 +53,9 @@ class FrameProcessor(ABC):
         services: Mapping[str, Any],
     ) -> Optional[Action]:
         raise NotImplementedError
+
+
+class LoopDiagnostics(Protocol):
+    @property
+    def achieved_fps(self) -> float | None:
+        ...
