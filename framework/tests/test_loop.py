@@ -1,6 +1,9 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
+import warnings
 from typing import Any, Mapping, Optional
+
+import pytest
 
 from framework.interfaces import Action, FrameProcessor, StampedFrame
 from framework.loop import BotLoop
@@ -48,6 +51,17 @@ class CapturingProcessor(FrameProcessor):
     ) -> Optional[Action]:
         self.last_services = dict(services)
         return None
+
+
+class _ManualClock:
+    def __init__(self, initial: float = 0.0) -> None:
+        self.value = initial
+
+    def now(self) -> float:
+        return self.value
+
+    def advance(self, delta: float) -> None:
+        self.value += delta
 
 
 def test_loop_records_monotonic_stamps_and_all_pairs() -> None:
@@ -148,3 +162,85 @@ def test_loop_passes_core_services_to_processor() -> None:
     assert processor.last_services["history"] is history
     assert processor.last_services["loop"] is loop
     assert processor.last_services["custom"] == "value"
+
+
+def test_loop_tracks_achieved_fps_from_recent_ticks() -> None:
+    clock = _ManualClock()
+    capture = FakeCapture(frames=["f0", "f1", "f2", "f3", "f4", "f5"], fps=5.0, latency_frames=0)
+    output = FakeOutput()
+    history = FrameHistory(capacity=8)
+    loop = BotLoop(
+        capture=capture,
+        output=output,
+        processor=EvenFrameProcessor(),
+        history=history,
+        clock=clock.now,
+        sleeper=lambda _: None,
+        achieved_rate_window_ticks=6,
+        achieved_rate_tolerance_fraction=0.10,
+        achieved_rate_warning_interval_seconds=10.0,
+    )
+
+    loop.start()
+    for _ in range(6):
+        loop.step()
+        clock.advance(0.2)
+    loop.stop()
+
+    assert loop.achieved_fps is not None
+    assert loop.achieved_fps == pytest.approx(5.0)
+
+
+def test_loop_warns_when_achieved_rate_diverges_beyond_tolerance() -> None:
+    clock = _ManualClock()
+    capture = FakeCapture(frames=["f0", "f1", "f2", "f3", "f4"], fps=10.0, latency_frames=0)
+    output = FakeOutput()
+    history = FrameHistory(capacity=8)
+    loop = BotLoop(
+        capture=capture,
+        output=output,
+        processor=EvenFrameProcessor(),
+        history=history,
+        clock=clock.now,
+        sleeper=lambda _: None,
+        achieved_rate_window_ticks=5,
+        achieved_rate_tolerance_fraction=0.10,
+        achieved_rate_warning_interval_seconds=10.0,
+    )
+
+    loop.start()
+    for _ in range(5):
+        loop.step()
+        clock.advance(0.2)
+
+    with pytest.warns(RuntimeWarning, match="BOT LOOP RATE WARNING"):
+        loop.stop()
+
+
+def test_loop_does_not_warn_when_achieved_rate_within_tolerance() -> None:
+    clock = _ManualClock()
+    capture = FakeCapture(frames=["f0", "f1", "f2", "f3", "f4"], fps=10.0, latency_frames=0)
+    output = FakeOutput()
+    history = FrameHistory(capacity=8)
+    loop = BotLoop(
+        capture=capture,
+        output=output,
+        processor=EvenFrameProcessor(),
+        history=history,
+        clock=clock.now,
+        sleeper=lambda _: None,
+        achieved_rate_window_ticks=5,
+        achieved_rate_tolerance_fraction=0.10,
+        achieved_rate_warning_interval_seconds=10.0,
+    )
+
+    loop.start()
+    for _ in range(5):
+        loop.step()
+        clock.advance(0.095)
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        loop.stop()
+
+    assert all("BOT LOOP RATE WARNING" not in str(item.message) for item in caught)
