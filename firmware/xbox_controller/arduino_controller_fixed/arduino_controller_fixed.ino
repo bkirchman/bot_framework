@@ -147,14 +147,14 @@ void setup()
     joystick.setRzAxisRange(-100, 100);
 
     // Set initial positions
-    joystick.setRxAxis(-100); // Right stick X (not used for aim in current setup)
+    joystick.setRxAxis(0); // Right stick X (not used for aim in current setup)
     joystick.setRyAxis(-100); // Right trigger (axis_5) - released
     joystick.setRzAxis(0);    // Right stick Y (aim vertical)
     joystick.setXAxis(0);     // Left stick X
     joystick.setYAxis(0);     // Left stick Y
     joystick.setZAxis(0);     // Right stick X (aim horizontal) - note: Z maps to right stick X for aim
 
-    joystick.setHatSwitch(0, -1); // Initialize to neutral position
+    joystick.setHatSwitch(0, 0); // Initialize to neutral position
 
     WiFi.begin(ssid, password);
     Serial.print("Connecting to Wi-Fi...");
@@ -174,6 +174,17 @@ void setup()
 
     Serial.println("UDP server started.");
     Serial.println("Begin ok!");
+
+     // Set initial positions
+    joystick.setRxAxis(-100); // Right stick X (not used for aim in current setup)
+    joystick.setRyAxis(-100); // Right trigger (axis_5) - released
+    joystick.setRzAxis(0);    // Right stick Y (aim vertical)
+    joystick.setXAxis(0);     // Left stick X
+    joystick.setYAxis(0);     // Left stick Y
+    joystick.setZAxis(0);     // Right stick X (aim horizontal) - note: Z maps to right stick X for aim
+
+    joystick.setHatSwitch(0, -1); // Initialize to neutral position
+
 }
 
 void loop()
