@@ -17,6 +17,8 @@ hardware = [
 ]
 ml = [
     "ultralytics>=8.3",
+    "yolov5",
+    "pandas",
 ]
 dev = [
     "pytest>=8.0",
