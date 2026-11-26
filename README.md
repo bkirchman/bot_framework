@@ -37,3 +37,14 @@ full and empty calibration rows. Calling it with a BGR frame returns a
 coordinate, and the clamped fill fraction. If no qualifying run is found, the
 coordinates and fraction are `None`. The ROI must fit entirely inside the frame.
 This stateless detector requires OpenCV.
+
+## Screen-mode classification
+
+`ScreenModeClassifier` in `framework.contrib.detection` evaluates ordered
+`ModeRule` predicates against a frame, returning a `ScreenModeResult` with the
+committed mode, raw mode, and true evidence names from the winning rule.
+Rules require all `all_of` evidence and, when present, at least one `any_of`
+item. Evidence names in the result follow `any_of` then `all_of` order.
+Unlike the stateless detectors, the classifier keeps state between calls:
+leaving a mode is immediate, while entering one requires the configured number
+of consecutive evaluations. Call `reset()` to return to the unknown state.
