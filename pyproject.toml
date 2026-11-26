@@ -14,6 +14,7 @@ dependencies = [
 [project.optional-dependencies]
 hardware = [
     "opencv-python>=4.8",
+    "cv2_enumerate_cameras; sys_platform == 'win32'",
 ]
 ml = [
     "ultralytics>=8.3",

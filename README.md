@@ -11,3 +11,18 @@ C:\Users\brian\source\repos\d4_bot\.venv\Scripts\python -m pytest -q
 ```
 
 Do not create a virtual environment inside bot_framework. A local bot_framework `.venv` starts empty, misses required dependencies, and framework tests will not run there.
+
+## Capture device selection
+
+Install hardware dependencies with `python -m pip install "bot_framework[hardware]"`.
+On Windows, `list_capture_devices("dshow")` returns device indices, names and
+paths. `AVerMediaCapture` requires exactly one of `device_name` (a
+case-insensitive substring) or `device_index`; name selection fails if it does
+not identify exactly one device. Name selection requires the Windows
+`cv2_enumerate_cameras` dependency.
+
+After warm-up, capture synchronously measures delivery over `fps_check_frames`
+(default 60) and raises if achieved FPS is below `min_fps_fraction` (default
+0.9) times the configured FPS. The measured `achieved_fps`, resolved device
+name, path, index and `active_backend` are available as capture properties.
+For index selection, the resolved name is `index <n>` and the path is `None`.
