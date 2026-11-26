@@ -4,6 +4,42 @@ from dataclasses import dataclass
 from typing import Any
 
 
+def _hue_mask(
+    cv2: Any,
+    hsv_frame: Any,
+    hue_range: tuple[int, int],
+    saturation_min: int,
+    value_min: int,
+) -> Any:
+    import numpy as np
+
+    hue_start, hue_end = hue_range
+    lower_sv = np.array([0, saturation_min, value_min], dtype=np.uint8)
+    upper_sv = np.array([0, 255, 255], dtype=np.uint8)
+
+    if hue_start <= hue_end:
+        lower = lower_sv.copy()
+        upper = upper_sv.copy()
+        lower[0] = hue_start
+        upper[0] = hue_end
+        return cv2.inRange(hsv_frame, lower, upper)
+
+    # Wrap case, e.g. (170, 10): [170..179] U [0..10]
+    lower_a = lower_sv.copy()
+    upper_a = upper_sv.copy()
+    lower_a[0] = hue_start
+    upper_a[0] = 179
+
+    lower_b = lower_sv.copy()
+    upper_b = upper_sv.copy()
+    lower_b[0] = 0
+    upper_b[0] = hue_end
+
+    mask_a = cv2.inRange(hsv_frame, lower_a, upper_a)
+    mask_b = cv2.inRange(hsv_frame, lower_b, upper_b)
+    return cv2.bitwise_or(mask_a, mask_b)
+
+
 @dataclass(frozen=True, slots=True)
 class ColorMatchDetector:
     hue_range: tuple[int, int]
@@ -45,33 +81,7 @@ class ColorMatchDetector:
         return frame[y : y + h, x : x + w]
 
     def _hue_mask(self, cv2: Any, hsv_frame: Any) -> Any:
-        import numpy as np
-
-        hue_start, hue_end = self.hue_range
-        lower_sv = np.array([0, self.saturation_min, self.value_min], dtype=np.uint8)
-        upper_sv = np.array([0, 255, 255], dtype=np.uint8)
-
-        if hue_start <= hue_end:
-            lower = lower_sv.copy()
-            upper = upper_sv.copy()
-            lower[0] = hue_start
-            upper[0] = hue_end
-            return cv2.inRange(hsv_frame, lower, upper)
-
-        # Wrap case, e.g. (170, 10): [170..179] U [0..10]
-        lower_a = lower_sv.copy()
-        upper_a = upper_sv.copy()
-        lower_a[0] = hue_start
-        upper_a[0] = 179
-
-        lower_b = lower_sv.copy()
-        upper_b = upper_sv.copy()
-        lower_b[0] = 0
-        upper_b[0] = hue_end
-
-        mask_a = cv2.inRange(hsv_frame, lower_a, upper_a)
-        mask_b = cv2.inRange(hsv_frame, lower_b, upper_b)
-        return cv2.bitwise_or(mask_a, mask_b)
+        return _hue_mask(cv2, hsv_frame, self.hue_range, self.saturation_min, self.value_min)
 
     @staticmethod
     def _import_cv2() -> Any:

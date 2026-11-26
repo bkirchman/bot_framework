@@ -26,3 +26,14 @@ After warm-up, capture synchronously measures delivery over `fps_check_frames`
 0.9) times the configured FPS. The measured `achieved_fps`, resolved device
 name, path, index and `active_backend` are available as capture properties.
 For index selection, the resolved name is `index <n>` and the path is `None`.
+
+## Fill-level detection
+
+`FillLevelDetector` in `framework.contrib.detection` accepts an `(x, y, w, h)`
+ROI, an OpenCV HSV hue range (including wraparound), saturation and value
+minima, a row-match fraction, a minimum consecutive-row count, and ROI-relative
+full and empty calibration rows. Calling it with a BGR frame returns a
+`FillLevelResult` containing the first qualifying row, its absolute frame
+coordinate, and the clamped fill fraction. If no qualifying run is found, the
+coordinates and fraction are `None`. The ROI must fit entirely inside the frame.
+This stateless detector requires OpenCV.
